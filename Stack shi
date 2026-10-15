@@ -1,0 +1,152 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local dbUrl = "https://stacktest-da4f5-default-rtdb.firebaseio.com/stacks/"
+
+-- Variáveis de controle
+local isRunning = false
+local isLeader = false
+local stackIndex = 1
+local heightOffset = 3
+
+-- Criação da UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StackUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 220, 0, 200)
+MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundTransparency = 1
+Title.Text = "Galaxy Stack Hub"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.Font = Enum.Font.SourceSansBold
+Title.Parent = MainFrame
+
+-- Botão Líder
+local BtnLeader = Instance.new("TextButton")
+BtnLeader.Size = UDim2.new(0.8, 0, 0, 35)
+BtnLeader.Position = UDim2.new(0.1, 0, 0, 45)
+BtnLeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+BtnLeader.Text = "Modo: Alt (Seguir)"
+BtnLeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnLeader.TextSize, BtnLeader.Font = 14, Enum.Font.SourceSansBold
+BtnLeader.Parent = MainFrame
+Instance.new("UICorner", BtnLeader).CornerRadius = UDim.new(0, 6)
+
+-- Caixa de Texto para o Index da Alt
+local TextBoxIndex = Instance.new("TextBox")
+TextBoxIndex.Size = UDim2.new(0.8, 0, 0, 30)
+TextBoxIndex.Position = UDim2.new(0.1, 0, 0, 90)
+TextBoxIndex.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+TextBoxIndex.Text = "1"
+TextBoxIndex.PlaceholderText = "Stack Index (Ex: 1, 2, 3)"
+TextBoxIndex.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextBoxIndex.TextSize, TextBoxIndex.Font = 13, Enum.Font.SourceSans
+TextBoxIndex.Parent = MainFrame
+Instance.new("UICorner", TextBoxIndex).CornerRadius = UDim.new(0, 6)
+
+-- Botão Ligar/Desligar
+local BtnToggle = Instance.new("TextButton")
+BtnToggle.Size = UDim2.new(0.8, 0, 0, 35)
+BtnToggle.Position = UDim2.new(0.1, 0, 0, 135)
+BtnToggle.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+BtnToggle.Text = "Desativado"
+BtnToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnToggle.TextSize, BtnToggle.Font = 14, Enum.Font.SourceSansBold
+BtnToggle.Parent = MainFrame
+Instance.new("UICorner", BtnToggle).CornerRadius = UDim.new(0, 6)
+
+-- Alternar entre Líder e Alt
+BtnLeader.MouseButton1Click:Connect(function()
+	isLeader = not isLeader
+	if isLeader then
+		BtnLeader.Text = "Modo: Líder (Host)"
+		BtnLeader.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+		TextBoxIndex.Visible = false
+	else
+		BtnLeader.Text = "Modo: Alt (Seguir)"
+		BtnLeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		TextBoxIndex.Visible = true
+	end
+end)
+
+-- Ligar/Desligar o sistema
+BtnToggle.MouseButton1Click:Connect(function()
+	isRunning = not isRunning
+	if isRunning then
+		BtnToggle.Text = "Ativado"
+		BtnToggle.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		BtnToggle.Text = "Desativado"
+		BtnToggle.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+end)
+
+local function getRoot(char)
+	return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+-- Loop principal de envio (Líder) ou leitura (Alt)
+task.spawn(function()
+	while true do
+		task.wait(0.2)
+		if isRunning then
+			if isLeader then
+				-- A lógica do Líder: Envia a posição
+				local char = player.Character
+				local root = getRoot(char)
+				if root then
+					local pos = root.Position
+					local data = { x = pos.X, y = pos.Y, z = pos.Z }
+					pcall(function()
+						HttpService:PostAsync(
+							dbUrl .. "lider.json",
+							HttpService:JSONEncode(data),
+							Enum.HttpContentType.ApplicationJson
+						)
+					end)
+				end
+			else
+				-- A lógica da Alt: Puxa a posição e aplica o stack
+				local success, response = pcall(function()
+					return HttpService:GetAsync(dbUrl .. "lider.json")
+				end)
+				
+				if success and response then
+					local posData = HttpService:JSONDecode(response)
+					local char = player.Character
+					local root = getRoot(char)
+					
+					-- Pega o índice digitado na caixa de texto com segurança
+					local idx = tonumber(TextBoxIndex.Text) or 1
+					
+					if root and posData then
+						local targetCFrame = CFrame.new(
+							posData.x, 
+							posData.y + (idx * heightOffset), 
+							posData.z
+						)
+						root.CFrame = targetCFrame
+					end
+				end
+			end
+		end
+	end
+end)
