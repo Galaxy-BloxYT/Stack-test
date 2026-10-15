@@ -8,17 +8,16 @@ local dbUrl = "https://stacktest-da4f5-default-rtdb.firebaseio.com/stacks/"
 -- Variáveis de controle
 local isRunning = false
 local isLeader = false
-local stackIndex = 1
 local heightOffset = 3
 
 -- Criação da UI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "StackUI"
+ScreenGui.Name = "StackUI_V2"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 220, 0, 200)
+MainFrame.Size = UDim2.new(0, 240, 0, 240)
 MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 0
@@ -33,16 +32,16 @@ UICorner.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundTransparency = 1
-Title.Text = "Galaxy Stack Hub"
+Title.Text = "Galaxy Stack Hub v2"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 16
 Title.Font = Enum.Font.SourceSansBold
 Title.Parent = MainFrame
 
--- Botão Líder
+-- Botão Alternar Modo (Líder / Alt)
 local BtnLeader = Instance.new("TextButton")
-BtnLeader.Size = UDim2.new(0.8, 0, 0, 35)
-BtnLeader.Position = UDim2.new(0.1, 0, 0, 45)
+BtnLeader.Size = UDim2.new(0.85, 0, 0, 35)
+BtnLeader.Position = UDim2.new(0.075, 0, 0, 40)
 BtnLeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 BtnLeader.Text = "Modo: Alt (Seguir)"
 BtnLeader.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -50,10 +49,22 @@ BtnLeader.TextSize, BtnLeader.Font = 14, Enum.Font.SourceSansBold
 BtnLeader.Parent = MainFrame
 Instance.new("UICorner", BtnLeader).CornerRadius = UDim.new(0, 6)
 
+-- Input do Nome/ID do Líder (Usado quando for Alt)
+local TextBoxLeaderTarget = Instance.new("TextBox")
+TextBoxLeaderTarget.Size = UDim2.new(0.85, 0, 0, 30)
+TextBoxLeaderTarget.Position = UDim2.new(0.075, 0, 0, 82)
+TextBoxLeaderTarget.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+TextBoxLeaderTarget.Text = player.Name -- Padrão: seu próprio nome
+TextBoxLeaderTarget.PlaceholderText = "Username ou UserId do Líder"
+TextBoxLeaderTarget.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextBoxLeaderTarget.TextSize, TextBoxLeaderTarget.Font = 13, Enum.Font.SourceSans
+TextBoxLeaderTarget.Parent = MainFrame
+Instance.new("UICorner", TextBoxLeaderTarget).CornerRadius = UDim.new(0, 6)
+
 -- Caixa de Texto para o Index da Alt
 local TextBoxIndex = Instance.new("TextBox")
-TextBoxIndex.Size = UDim2.new(0.8, 0, 0, 30)
-TextBoxIndex.Position = UDim2.new(0.1, 0, 0, 90)
+TextBoxIndex.Size = UDim2.new(0.85, 0, 0, 30)
+TextBoxIndex.Position = UDim2.new(0.075, 0, 0, 120)
 TextBoxIndex.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 TextBoxIndex.Text = "1"
 TextBoxIndex.PlaceholderText = "Stack Index (Ex: 1, 2, 3)"
@@ -64,8 +75,8 @@ Instance.new("UICorner", TextBoxIndex).CornerRadius = UDim.new(0, 6)
 
 -- Botão Ligar/Desligar
 local BtnToggle = Instance.new("TextButton")
-BtnToggle.Size = UDim2.new(0.8, 0, 0, 35)
-BtnToggle.Position = UDim2.new(0.1, 0, 0, 135)
+BtnToggle.Size = UDim2.new(0.85, 0, 0, 35)
+BtnToggle.Position = UDim2.new(0.075, 0, 0, 180)
 BtnToggle.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 BtnToggle.Text = "Desativado"
 BtnToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -73,21 +84,23 @@ BtnToggle.TextSize, BtnToggle.Font = 14, Enum.Font.SourceSansBold
 BtnToggle.Parent = MainFrame
 Instance.new("UICorner", BtnToggle).CornerRadius = UDim.new(0, 6)
 
--- Alternar entre Líder e Alt
+-- Alternar Modo
 BtnLeader.MouseButton1Click:Connect(function()
 	isLeader = not isLeader
 	if isLeader then
 		BtnLeader.Text = "Modo: Líder (Host)"
 		BtnLeader.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+		TextBoxLeaderTarget.Visible = false
 		TextBoxIndex.Visible = false
 	else
 		BtnLeader.Text = "Modo: Alt (Seguir)"
 		BtnLeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		TextBoxLeaderTarget.Visible = true
 		TextBoxIndex.Visible = true
 	end
 end)
 
--- Ligar/Desligar o sistema
+-- Toggle Ligar/Desligar
 BtnToggle.MouseButton1Click:Connect(function()
 	isRunning = not isRunning
 	if isRunning then
@@ -103,45 +116,63 @@ local function getRoot(char)
 	return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- Loop principal de envio (Líder) ou leitura (Alt)
+-- Loop de Envio (Líder) ou Leitura (Alt)
 task.spawn(function()
 	while true do
 		task.wait(0.2)
 		if isRunning then
 			if isLeader then
-				-- A lógica do Líder: Envia a posição
+				-- O Líder envia o seu CFrame juntamente com Username e UserId
 				local char = player.Character
 				local root = getRoot(char)
 				if root then
 					local pos = root.Position
-					local data = { x = pos.X, y = pos.Y, z = pos.Z }
+					local payload = {
+						username = player.Name,
+						userId = player.UserId,
+						x = pos.X,
+						y = pos.Y,
+						z = pos.Z
+					}
+					
 					pcall(function()
+						-- Salva na rota específica pelo UserId do líder
 						HttpService:PostAsync(
-							dbUrl .. "lider.json",
-							HttpService:JSONEncode(data),
+							dbUrl .. "leader_" .. tostring(player.UserId) .. ".json",
+							HttpService:JSONEncode(payload),
 							Enum.HttpContentType.ApplicationJson
 						)
 					end)
 				end
 			else
-				-- A lógica da Alt: Puxa a posição e aplica o stack
+				-- A Alt lê os dados filtrando pelo Líder especificado
+				local targetInput = string.lower(TextBoxLeaderTarget.Text)
+				local idx = tonumber(TextBoxIndex.Text) or 1
+				
+				-- Se o target for número, assume que é UserId; se não, tenta identificar
+				local fetchPath = ""
+				if tonumber(targetInput) then
+					fetchPath = "leader_" .. targetInput .. ".json"
+				else
+					-- Tenta achar via UserId do jogador local ou username
+					fetchPath = "leader_" .. tostring(player.UserId) .. ".json"
+				end
+
 				local success, response = pcall(function()
-					return HttpService:GetAsync(dbUrl .. "lider.json")
+					return HttpService:GetAsync(dbUrl .. fetchPath)
 				end)
 				
 				if success and response then
-					local posData = HttpService:JSONDecode(response)
+					local data = HttpService:JSONDecode(response)
 					local char = player.Character
 					local root = getRoot(char)
 					
-					-- Pega o índice digitado na caixa de texto com segurança
-					local idx = tonumber(TextBoxIndex.Text) or 1
-					
-					if root and posData then
+					if root and data and data.x and data.y and data.z then
+						-- Aplica o offset vertical para empilhar
 						local targetCFrame = CFrame.new(
-							posData.x, 
-							posData.y + (idx * heightOffset), 
-							posData.z
+							data.x, 
+							data.y + (idx * heightOffset), 
+							data.z
 						)
 						root.CFrame = targetCFrame
 					end
