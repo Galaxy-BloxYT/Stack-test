@@ -12,7 +12,7 @@ local heightOffset = 3
 
 -- Criação da UI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "StackUI_V2"
+ScreenGui.Name = "StackUI_V3"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
@@ -32,7 +32,7 @@ UICorner.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundTransparency = 1
-Title.Text = "Galaxy Stack Hub v2"
+Title.Text = "Galaxy Stack Hub v3"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 16
 Title.Font = Enum.Font.SourceSansBold
@@ -54,8 +54,8 @@ local TextBoxLeaderTarget = Instance.new("TextBox")
 TextBoxLeaderTarget.Size = UDim2.new(0.85, 0, 0, 30)
 TextBoxLeaderTarget.Position = UDim2.new(0.075, 0, 0, 82)
 TextBoxLeaderTarget.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-TextBoxLeaderTarget.Text = player.Name -- Padrão: seu próprio nome
-TextBoxLeaderTarget.PlaceholderText = "Username ou UserId do Líder"
+TextBoxLeaderTarget.Text = player.Name -- Coloque o nome do líder aqui na Alt
+TextBoxLeaderTarget.PlaceholderText = "Username do Líder"
 TextBoxLeaderTarget.TextColor3 = Color3.fromRGB(255, 255, 255)
 TextBoxLeaderTarget.TextSize, TextBoxLeaderTarget.Font = 13, Enum.Font.SourceSans
 TextBoxLeaderTarget.Parent = MainFrame
@@ -116,65 +116,57 @@ local function getRoot(char)
 	return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+-- Função para sanitizar o nome para o Firebase (remover espaços ou caracteres inválidos na chave)
+local function sanitizeKey(name)
+	return string.gsub(name, "[%W]", "")
+end
+
 -- Loop de Envio (Líder) ou Leitura (Alt)
 task.spawn(function()
 	while true do
-		task.wait(0.2)
+		task.wait(0.15) -- Frequência otimizada
 		if isRunning then
 			if isLeader then
-				-- O Líder envia o seu CFrame juntamente com Username e UserId
 				local char = player.Character
 				local root = getRoot(char)
 				if root then
 					local pos = root.Position
 					local payload = {
-						username = player.Name,
-						userId = player.UserId,
 						x = pos.X,
 						y = pos.Y,
 						z = pos.Z
 					}
 					
+					-- Usa RequestAsync com PUT para atualizar diretamente o nó do líder pelo nome limpo
+					local cleanName = sanitizeKey(player.Name)
 					pcall(function()
-						-- Salva na rota específica pelo UserId do líder
-						HttpService:PostAsync(
-							dbUrl .. "leader_" .. tostring(player.UserId) .. ".json",
-							HttpService:JSONEncode(payload),
-							Enum.HttpContentType.ApplicationJson
-						)
+						HttpService:RequestAsync({
+							Url = dbUrl .. "lideres/" .. cleanName .. ".json",
+							Method = "PUT",
+							Headers = { ["Content-Type"] = "application/json" },
+							Body = HttpService:JSONEncode(payload)
+						})
 					end)
 				end
 			else
-				-- A Alt lê os dados filtrando pelo Líder especificado
-				local targetInput = string.lower(TextBoxLeaderTarget.Text)
+				-- A Alt busca pelo nome digitado na caixa de texto
+				local targetLeader = sanitizeKey(TextBoxLeaderTarget.Text)
 				local idx = tonumber(TextBoxIndex.Text) or 1
 				
-				-- Se o target for número, assume que é UserId; se não, tenta identificar
-				local fetchPath = ""
-				if tonumber(targetInput) then
-					fetchPath = "leader_" .. targetInput .. ".json"
-				else
-					-- Tenta achar via UserId do jogador local ou username
-					fetchPath = "leader_" .. tostring(player.UserId) .. ".json"
-				end
-
-				local success, response = pcall(function()
-					return HttpService:GetAsync(dbUrl .. fetchPath)
-				end)
-				
-				if success and response then
-					local data = HttpService:JSONDecode(response)
-					local char = player.Character
-					local root = getRoot(char)
+				if targetLeader ~= "" then
+					local success, response = pcall(function()
+						return HttpService:GetAsync(dbUrl .. "lideres/" .. targetLeader .. ".json")
+					end)
 					
-					if root and data and data.x and data.y and data.z then
-						-- Aplica o offset vertical para empilhar
-						local targetCFrame = CFrame.new(
-							data.x, 
-							data.y + (idx * heightOffset), 
-							data.z
-						)
-						root.CFrame = targetCFrame
+					if success and response and response ~= "null" then
+						local data = HttpService:JSONDecode(response)
+						local char = player.Character
+						local root = getRoot(char)
+						
+						if root and data and data.x then
+							-- Aplica o CFrame direto na cabeça/posição do líder com o offset
+							root.CFrame = CFrame.new(data.x, data.y + (idx * heightOffset), data.z)
+						end
 					end
 				end
 			end
