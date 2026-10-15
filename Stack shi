@@ -12,7 +12,7 @@ local heightOffset = 3
 
 -- Criação da UI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "StackUI_V3"
+ScreenGui.Name = "StackUI_V4"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
@@ -32,7 +32,7 @@ UICorner.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundTransparency = 1
-Title.Text = "Galaxy Stack Hub v3"
+Title.Text = "Galaxy Stack Hub v4"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 16
 Title.Font = Enum.Font.SourceSansBold
@@ -49,12 +49,12 @@ BtnLeader.TextSize, BtnLeader.Font = 14, Enum.Font.SourceSansBold
 BtnLeader.Parent = MainFrame
 Instance.new("UICorner", BtnLeader).CornerRadius = UDim.new(0, 6)
 
--- Input do Nome/ID do Líder (Usado quando for Alt)
+-- Input do Nome do Líder
 local TextBoxLeaderTarget = Instance.new("TextBox")
 TextBoxLeaderTarget.Size = UDim2.new(0.85, 0, 0, 30)
 TextBoxLeaderTarget.Position = UDim2.new(0.075, 0, 0, 82)
 TextBoxLeaderTarget.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-TextBoxLeaderTarget.Text = player.Name -- Coloque o nome do líder aqui na Alt
+TextBoxLeaderTarget.Text = player.Name
 TextBoxLeaderTarget.PlaceholderText = "Username do Líder"
 TextBoxLeaderTarget.TextColor3 = Color3.fromRGB(255, 255, 255)
 TextBoxLeaderTarget.TextSize, TextBoxLeaderTarget.Font = 13, Enum.Font.SourceSans
@@ -116,56 +116,53 @@ local function getRoot(char)
 	return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- Função para sanitizar o nome para o Firebase (remover espaços ou caracteres inválidos na chave)
 local function sanitizeKey(name)
 	return string.gsub(name, "[%W]", "")
 end
 
--- Loop de Envio (Líder) ou Leitura (Alt)
+-- Loop Principal
 task.spawn(function()
 	while true do
-		task.wait(0.15) -- Frequência otimizada
+		task.wait(0.15)
 		if isRunning then
 			if isLeader then
 				local char = player.Character
 				local root = getRoot(char)
 				if root then
-					local pos = root.Position
-					local payload = {
-						x = pos.X,
-						y = pos.Y,
-						z = pos.Z
-					}
-					
-					-- Usa RequestAsync com PUT para atualizar diretamente o nó do líder pelo nome limpo
+					-- Pega os 12 componentes do CFrame (X, Y, Z e a matriz de rotação inteira)
+					local cfComponents = {root.CFrame:GetComponents()}
 					local cleanName = sanitizeKey(player.Name)
+					
 					pcall(function()
 						HttpService:RequestAsync({
-							Url = dbUrl .. "lideres/" .. cleanName .. ".json",
+							Url = dbUrl .. "lideres/" .. cleanName .. "/CFrame.json",
 							Method = "PUT",
 							Headers = { ["Content-Type"] = "application/json" },
-							Body = HttpService:JSONEncode(payload)
+							Body = HttpService:JSONEncode(cfComponents)
 						})
 					end)
 				end
 			else
-				-- A Alt busca pelo nome digitado na caixa de texto
 				local targetLeader = sanitizeKey(TextBoxLeaderTarget.Text)
 				local idx = tonumber(TextBoxIndex.Text) or 1
 				
 				if targetLeader ~= "" then
 					local success, response = pcall(function()
-						return HttpService:GetAsync(dbUrl .. "lideres/" .. targetLeader .. ".json")
+						return HttpService:GetAsync(dbUrl .. "lideres/" .. targetLeader .. "/CFrame.json")
 					end)
 					
 					if success and response and response ~= "null" then
-						local data = HttpService:JSONDecode(response)
+						local components = HttpService:JSONDecode(response)
 						local char = player.Character
 						local root = getRoot(char)
 						
-						if root and data and data.x then
-							-- Aplica o CFrame direto na cabeça/posição do líder com o offset
-							root.CFrame = CFrame.new(data.x, data.y + (idx * heightOffset), data.z)
+						if root and type(components) == "table" and #components >= 12 then
+							-- Reconstrói o CFrame do líder com base nos componentes puros
+							local leaderCF = CFrame.new(unpack(components))
+							
+							-- Aplica o CFrame do líder com o offset vertical na altura (Y) mantendo a rotação exata
+							local stackedCF = leaderCF + Vector3.new(0, idx * heightOffset, 0)
+							root.CFrame = stackedCF
 						end
 					end
 				end
